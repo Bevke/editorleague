@@ -969,8 +969,8 @@
         let activeLeagueTeams = [];
         let teamCalculatedStats = {};
 
-        // Sadece alt ligdeyken (yepfella) geçerli olacak 6 takımlık liste
-        const ALLOWED_TEAMS = ["MADEUS  FC", "MADEUS FC", "OOG FC", "OOG", "TOKATSPOR", "BAMBAMSPOR FC", "BAMBAMSPOR", "KONYASPOR", "METOSPOR"];
+        // Artık isimleri standartlaştırdığımız için kısa ve öz listemiz:
+        const ALLOWED_TEAMS = ["MADEUS FC", "OOG FC", "TOKATSPOR", "BAMBAMSPOR", "KONYASPOR", "METOSPOR"];
 
         const SPECIAL_LOGOS = {
             "TOKATSPOR": "https://media.discordapp.net/attachments/1285998157552947231/1519783428948758538/tokatspor-logo-png_seeklogo-431965-removebg-preview.png?ex=6a3ed01d&is=6a3d7e9d&hm=3a54245a5ad1ce02e16446a9035105e7ad65eebbdc0d65e63ff7769ce0ab0ff3&=&format=webp&quality=lossless&width=625&height=625",
@@ -1094,37 +1094,54 @@
                 const data = await response.json();
                 globalData = data;
 
-                // Sadece Alt Lig seçiliyken TGF JUNIORS ismini Konyaspor yapıyoruz
+                const allTeams = new Set();
+
+                // Eğer lig Editor League ise özel filtreler ve temizlik işlemlerini yapıyoruz
                 if (currentLeague === 'editor') {
+                    const normalizeIsim = (isim) => {
+                        if(!isim) return "";
+                        let t = isim.trim().toUpperCase();
+                        if(t === "MADEUS  FC" || t === "MADEUS FC") return "Madeus FC";
+                        if(t === "OOG" || t === "OOG FC") return "OOG FC";
+                        if(t === "BAMBAMSPOR" || t === "BAMBAMSPOR FC") return "Bambamspor";
+                        if(t === "TGF JUNIORS" || t === "KONYASPOR") return "Konyaspor";
+                        if(t === "METOSPOR") return "Metospor";
+                        if(t === "TOKATSPOR") return "Tokatspor";
+                        return isim.trim();
+                    };
+
+                    // Maçları temizle ve sahte takımlı maçları sistemden tamamen sil
                     if (data.maclar) {
-                        data.maclar.forEach(m => {
-                            let evTakim = m.ev_sahibi || m.ev || "";
-                            let depTakim = m.deplasman || m.dep || "";
-                            if(evTakim.trim().toUpperCase() === "MADEUS FC") evTakim = "Madeus FC";
-                            if(depTakim.trim().toUpperCase() === "MADEUS FC") depTakim = "Madeus FC";
-                            if(evTakim.trim().toUpperCase() === "TGF JUNIORS") evTakim = "Konyaspor";
-                            if(depTakim.trim().toUpperCase() === "TGF JUNIORS") depTakim = "Konyaspor";
+                        data.maclar = data.maclar.map(m => {
+                            let evTakim = normalizeIsim(m.ev_sahibi || m.ev);
+                            let depTakim = normalizeIsim(m.deplasman || m.dep);
                             m.ev = evTakim; m.ev_sahibi = evTakim;
                             m.dep = depTakim; m.deplasman = depTakim;
-                        });
+                            return m;
+                        }).filter(m => 
+                            ALLOWED_TEAMS.includes(m.ev.toUpperCase()) && 
+                            ALLOWED_TEAMS.includes(m.dep.toUpperCase())
+                        );
                     }
 
+                    // Oyuncuları temizle, serbest olmayan ve filtre dışı olanları dışla
                     if (data.oyuncular) {
-                        Object.values(data.oyuncular).forEach(o => {
-                            if(o.takim && o.takim.trim().toUpperCase() === "MADEUS FC") o.takim = "Madeus FC";
-                            if(o.takim && o.takim.trim().toUpperCase() === "TGF JUNIORS") o.takim = "Konyaspor";
+                        const temizOyuncular = {};
+                        Object.entries(data.oyuncular).forEach(([key, o]) => {
+                            o.takim = normalizeIsim(o.takim);
+                            if(o.takim === "Serbest" || ALLOWED_TEAMS.includes(o.takim.toUpperCase())) {
+                                temizOyuncular[key] = o;
+                            }
                         });
+                        data.oyuncular = temizOyuncular;
                     }
                 }
 
-                const allTeams = new Set();
+                // Geri kalan takım listesini Set ile benzersiz şekilde oluşturma (Her iki lig için ortak)
                 if (data.oyuncular) {
                     Object.values(data.oyuncular).forEach(o => { 
                         if(o.takim && o.takim !== 'Serbest') {
-                            // Alt ligdeyse filtre uygula, ana ligdeyse (normal) her şeyi ekle
-                            if(currentLeague !== 'editor' || ALLOWED_TEAMS.includes(o.takim.trim().toUpperCase())) {
-                                allTeams.add(o.takim); 
-                            }
+                            allTeams.add(o.takim); 
                         }
                     });
                 }
@@ -1132,10 +1149,11 @@
                     data.maclar.forEach(m => {
                         const evT = m.ev_sahibi || m.ev;
                         const depT = m.deplasman || m.dep;
-                        if(evT && (currentLeague !== 'editor' || ALLOWED_TEAMS.includes(evT.trim().toUpperCase()))) allTeams.add(evT);
-                        if(depT && (currentLeague !== 'editor' || ALLOWED_TEAMS.includes(depT.trim().toUpperCase()))) allTeams.add(depT);
+                        if(evT) allTeams.add(evT);
+                        if(depT) allTeams.add(depT);
                     });
                 }
+                
                 activeLeagueTeams = Array.from(allTeams).filter(t => t && t.trim() !== "");
 
                 refreshDashboardView();
@@ -1147,41 +1165,18 @@
         }
 
         function refreshDashboardView() {
-            // Alt ligdeyse 6 takım filtresini uygula, Ana ligdeyse (normal) her şeyi getir
-            if(currentLeague === 'editor') {
-                cachedPlayersList = Object.values(globalData.oyuncular || {}).filter(o => o.takim && ALLOWED_TEAMS.includes(o.takim.trim().toUpperCase()));
-                
-                const activeMatches = (globalData.maclar || []).filter(m => {
-                    const evT = m.ev_sahibi || m.ev;
-                    const depT = m.deplasman || m.dep;
-                    return evT && ALLOWED_TEAMS.includes(evT.trim().toUpperCase()) && 
-                           depT && ALLOWED_TEAMS.includes(depT.trim().toUpperCase());
-                });
-                
-                calculateAllTeamData(activeMatches);
-                renderStandings();
-                renderPlayers(cachedPlayersList);
-                renderLeaderboards(cachedPlayersList);
-                initVersusSelectors(cachedPlayersList);
-                renderTeams();
-                renderFixtures(activeMatches);
-                renderTotw(cachedPlayersList);
-                initTeamVsSelectors();
-            } else {
-                // ANA LİG MODU: Filtresiz her şeyi basıyoruz
-                cachedPlayersList = Object.values(globalData.oyuncular || {});
-                const activeMatches = globalData.maclar || [];
-                
-                calculateAllTeamData(activeMatches);
-                renderStandings();
-                renderPlayers(cachedPlayersList);
-                renderLeaderboards(cachedPlayersList);
-                initVersusSelectors(cachedPlayersList);
-                renderTeams();
-                renderFixtures(activeMatches);
-                renderTotw(cachedPlayersList);
-                initTeamVsSelectors();
-            }
+            cachedPlayersList = Object.values(globalData.oyuncular || {});
+            const activeMatches = globalData.maclar || [];
+            
+            calculateAllTeamData(activeMatches);
+            renderStandings();
+            renderPlayers(cachedPlayersList);
+            renderLeaderboards(cachedPlayersList);
+            initVersusSelectors(cachedPlayersList);
+            renderTeams();
+            renderFixtures(activeMatches);
+            renderTotw(cachedPlayersList);
+            initTeamVsSelectors();
         }
 
         function calculateAllTeamData(maclar) {
