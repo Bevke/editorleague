@@ -969,8 +969,8 @@
         let activeLeagueTeams = [];
         let teamCalculatedStats = {};
 
-        // Artık isimleri standartlaştırdığımız için kısa ve öz listemiz:
-        const ALLOWED_TEAMS = ["MADEUS FC", "OOG FC", "TOKATSPOR", "BAMBAMSPOR", "KONYASPOR", "METOSPOR"];
+        // Sadece alt ligdeyken (yepfella) geçerli olacak takımların listesi
+        const ALLOWED_TEAMS = ["MADEUS  FC", "MADEUS FC", "OOG FC", "OOG", "TOKATSPOR", "BAMBAMSPOR FC", "BAMBAMSPOR", "KONYASPOR", "METOSPOR", "MESSI FC", "MESSİ FC"];
 
         const SPECIAL_LOGOS = {
             "TOKATSPOR": "https://media.discordapp.net/attachments/1285998157552947231/1519783428948758538/tokatspor-logo-png_seeklogo-431965-removebg-preview.png?ex=6a3ed01d&is=6a3d7e9d&hm=3a54245a5ad1ce02e16446a9035105e7ad65eebbdc0d65e63ff7769ce0ab0ff3&=&format=webp&quality=lossless&width=625&height=625",
@@ -1002,12 +1002,13 @@
             "BAMBAMSPOR": "#eab308",
             "BAMBAMSPOR FC": "#eab308",
             "VANPARIS": "#f97316",
-            "VAN PARISSPOR": "#f97316"
+            "VAN PARISSPOR": "#f97316",
+            "MESSI FC": "#38bdf8"
         };
 
         function applyChameleonTheme(tName) {
             if(!tName) return;
-            const clean = tName.trim().toUpperCase();
+            const clean = tName.trim().toUpperCase().replace(/İ/g, 'I');
             const clr = TEAM_COLORS[clean] || (currentLeague === 'editor' ? '#38bdf8' : '#22c55e');
             document.documentElement.style.setProperty('--current-team-glow', clr);
         }
@@ -1019,7 +1020,7 @@
 
         function getTeamLogo(tName) {
             if (!tName) return `https://via.placeholder.com/150/${currentLeague === 'editor' ? '0f172a' : '030a04'}/${currentLeague === 'editor' ? '38bdf8' : '22c55e'}?text=FC`;
-            const cleanName = tName.trim().toUpperCase();
+            const cleanName = tName.trim().toUpperCase().replace(/İ/g, 'I');
             if (SPECIAL_LOGOS[cleanName]) return SPECIAL_LOGOS[cleanName];
             
             const initials = tName.split(' ').map(n => n[0]).join('').slice(0, 3).toUpperCase();
@@ -1092,65 +1093,72 @@
             try {
                 const response = await fetch(API_URLS[currentLeague]);
                 const data = await response.json();
-                globalData = data;
+                
+                // 🔥 GLOBAL NORMALİZASYON: Gelen tüm takım isimlerini büyük/küçük harf hatasından kurtaran yapı
+                const normalizeTeamName = (isim) => {
+                    if (!isim) return "";
+                    // Türkçe i harfini I yaparak standarda çekiyoruz
+                    let clean = isim.trim().toLocaleUpperCase('tr-TR').replace(/İ/g, 'I');
 
-                const allTeams = new Set();
+                    if (clean === "MESSI FC" || clean === "MESSİ FC" || clean === "MESSI  FC") return "Messi FC";
+                    if (clean === "OOG FC" || clean === "OOG" || clean === "OOG  FC") return "OOG FC";
+                    if (clean === "MADEUS FC" || clean === "MADEUS  FC") return "Madeus FC";
+                    if (clean === "BAMBAMSPOR" || clean === "BAMBAMSPOR FC") return "Bambamspor";
+                    if (clean === "TGF JUNIORS" || clean === "KONYASPOR") return "Konyaspor";
+                    if (clean === "METOSPOR") return "Metospor";
+                    if (clean === "TOKATSPOR") return "Tokatspor";
 
-                // Eğer lig Editor League ise özel filtreler ve temizlik işlemlerini yapıyoruz
-                if (currentLeague === 'editor') {
-                    const normalizeIsim = (isim) => {
-                        if(!isim) return "";
-                        let t = isim.trim().toUpperCase();
-                        if(t === "MADEUS  FC" || t === "MADEUS FC") return "Madeus FC";
-                        if(t === "OOG" || t === "OOG FC") return "OOG FC";
-                        if(t === "BAMBAMSPOR" || t === "BAMBAMSPOR FC") return "Bambamspor";
-                        if(t === "TGF JUNIORS" || t === "KONYASPOR") return "Konyaspor";
-                        if(t === "METOSPOR") return "Metospor";
-                        if(t === "TOKATSPOR") return "Tokatspor";
-                        return isim.trim();
-                    };
+                    // Özel kelimeler dışındakilerin sadece ilk harfini büyük yap
+                    return isim.trim().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLocaleLowerCase('tr-TR')).join(' ');
+                };
 
-                    // Maçları temizle ve sahte takımlı maçları sistemden tamamen sil
-                    if (data.maclar) {
-                        data.maclar = data.maclar.map(m => {
-                            let evTakim = normalizeIsim(m.ev_sahibi || m.ev);
-                            let depTakim = normalizeIsim(m.deplasman || m.dep);
-                            m.ev = evTakim; m.ev_sahibi = evTakim;
-                            m.dep = depTakim; m.deplasman = depTakim;
-                            return m;
-                        }).filter(m => 
-                            ALLOWED_TEAMS.includes(m.ev.toUpperCase()) && 
-                            ALLOWED_TEAMS.includes(m.dep.toUpperCase())
-                        );
-                    }
-
-                    // Oyuncuları temizle, serbest olmayan ve filtre dışı olanları dışla
-                    if (data.oyuncular) {
-                        const temizOyuncular = {};
-                        Object.entries(data.oyuncular).forEach(([key, o]) => {
-                            o.takim = normalizeIsim(o.takim);
-                            if(o.takim === "Serbest" || ALLOWED_TEAMS.includes(o.takim.toUpperCase())) {
-                                temizOyuncular[key] = o;
-                            }
-                        });
-                        data.oyuncular = temizOyuncular;
-                    }
+                // Tüm maçları temizle
+                if (data.maclar) {
+                    data.maclar.forEach(m => {
+                        if(m.ev) m.ev = normalizeTeamName(m.ev);
+                        if(m.ev_sahibi) m.ev_sahibi = normalizeTeamName(m.ev_sahibi);
+                        if(m.dep) m.dep = normalizeTeamName(m.dep);
+                        if(m.deplasman) m.deplasman = normalizeTeamName(m.deplasman);
+                    });
                 }
 
-                // Geri kalan takım listesini Set ile benzersiz şekilde oluşturma (Her iki lig için ortak)
+                // Tüm oyuncu listesindeki takımları temizle
                 if (data.oyuncular) {
-                    Object.values(data.oyuncular).forEach(o => { 
+                    Object.values(data.oyuncular).forEach(o => {
                         if(o.takim && o.takim !== 'Serbest') {
-                            allTeams.add(o.takim); 
+                            o.takim = normalizeTeamName(o.takim);
                         }
                     });
                 }
+
+                globalData = data;
+
+                const allTeams = new Set();
+                
+                // İzin verilen takımlar kontrol filtresi
+                const isAllowed = (tName) => {
+                    if (!tName) return false;
+                    const upName = tName.trim().toUpperCase().replace(/İ/g, 'I');
+                    return ALLOWED_TEAMS.some(allowed => allowed.toUpperCase().replace(/İ/g, 'I') === upName);
+                };
+
+                if (data.oyuncular) {
+                    Object.values(data.oyuncular).forEach(o => { 
+                        if(o.takim && o.takim !== 'Serbest') {
+                            // Alt ligdeyse filtre uygula, ana ligdeyse (normal) her şeyi ekle
+                            if(currentLeague !== 'editor' || isAllowed(o.takim)) {
+                                allTeams.add(o.takim); 
+                            }
+                        }
+                    });
+                }
+                
                 if (data.maclar) {
                     data.maclar.forEach(m => {
                         const evT = m.ev_sahibi || m.ev;
                         const depT = m.deplasman || m.dep;
-                        if(evT) allTeams.add(evT);
-                        if(depT) allTeams.add(depT);
+                        if(evT && (currentLeague !== 'editor' || isAllowed(evT))) allTeams.add(evT);
+                        if(depT && (currentLeague !== 'editor' || isAllowed(depT))) allTeams.add(depT);
                     });
                 }
                 
@@ -1165,18 +1173,46 @@
         }
 
         function refreshDashboardView() {
-            cachedPlayersList = Object.values(globalData.oyuncular || {});
-            const activeMatches = globalData.maclar || [];
-            
-            calculateAllTeamData(activeMatches);
-            renderStandings();
-            renderPlayers(cachedPlayersList);
-            renderLeaderboards(cachedPlayersList);
-            initVersusSelectors(cachedPlayersList);
-            renderTeams();
-            renderFixtures(activeMatches);
-            renderTotw(cachedPlayersList);
-            initTeamVsSelectors();
+            const isAllowed = (tName) => {
+                if (!tName) return false;
+                const upName = tName.trim().toUpperCase().replace(/İ/g, 'I');
+                return ALLOWED_TEAMS.some(allowed => allowed.toUpperCase().replace(/İ/g, 'I') === upName);
+            };
+
+            // Alt ligdeyse 6 takım filtresini uygula, Ana ligdeyse (normal) her şeyi getir
+            if(currentLeague === 'editor') {
+                cachedPlayersList = Object.values(globalData.oyuncular || {}).filter(o => o.takim && isAllowed(o.takim));
+                
+                const activeMatches = (globalData.maclar || []).filter(m => {
+                    const evT = m.ev_sahibi || m.ev;
+                    const depT = m.deplasman || m.dep;
+                    return evT && isAllowed(evT) && depT && isAllowed(depT);
+                });
+                
+                calculateAllTeamData(activeMatches);
+                renderStandings();
+                renderPlayers(cachedPlayersList);
+                renderLeaderboards(cachedPlayersList);
+                initVersusSelectors(cachedPlayersList);
+                renderTeams();
+                renderFixtures(activeMatches);
+                renderTotw(cachedPlayersList);
+                initTeamVsSelectors();
+            } else {
+                // ANA LİG MODU: Filtresiz her şeyi basıyoruz
+                cachedPlayersList = Object.values(globalData.oyuncular || {});
+                const activeMatches = globalData.maclar || [];
+                
+                calculateAllTeamData(activeMatches);
+                renderStandings();
+                renderPlayers(cachedPlayersList);
+                renderLeaderboards(cachedPlayersList);
+                initVersusSelectors(cachedPlayersList);
+                renderTeams();
+                renderFixtures(activeMatches);
+                renderTotw(cachedPlayersList);
+                initTeamVsSelectors();
+            }
         }
 
         function calculateAllTeamData(maclar) {
