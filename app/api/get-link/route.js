@@ -10,55 +10,55 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    // 1. Kullanıcının Supabase oturumunu doğrula
+    // 1. Oturum Kontrolü
     const { data: { user }, error: authError } = await supabase.auth.getUser(userToken);
     if (authError || !user) {
-      return Response.json({ error: "Erişim yetkiniz yok! Lütfen giriş yapın." }, { status: 401 });
+      return Response.json({ error: "Lütfen önce giriş yapın." }, { status: 401 });
     }
 
-    // 2. Maç verisini veritabanından çek
-    const { data: match, error: matchError } = await supabase
-      .from('mac')
-      .select('drive_link, is_active')
-      .eq('id', matchId)
-      .single();
-
-    if (matchError || !match || !match.is_active) {
-      return Response.json({ error: "Maç bulunamadı veya pasif." }, { status: 404 });
+    // 2. VIP (Premium) Kontrolü
+    const { data: profile } = await supabase.from('profiles').select('is_vip').eq('id', user.id).single();
+    if (!profile || !profile.is_vip) {
+      return Response.json({ error: "Drive erişimi için VIP yetkiniz bulunmuyor. Lütfen Barafella Admin ile iletişime geçin." }, { status: 403 });
     }
 
-    // 3. Drive Linkinden File ID çıkarma
+    // 3. İçerik Verisini Çek
+    const { data: match, error: matchError } = await supabase.from('mac').select('*').eq('id', matchId).single();
+    if (matchError || !match) {
+      return Response.json({ error: "İçerik bulunamadı." }, { status: 404 });
+    }
+
+    // 4. Google Drive İzni Verme
     const fileIdMatch = match.drive_link.match(/\/d\/([a-zA-Z0-9_-]+)/);
     const fileId = fileIdMatch ? fileIdMatch[1] : null;
 
     if (fileId && user.email) {
-      // 4. Service Account ile Google Drive Auth Kurulumu
       const auth = new google.auth.GoogleAuth({
         credentials: {
           client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-          // Vercel'deki ters eğik çizgileri gerçek alt satıra dönüştürür
           private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
         },
         scopes: ['https://www.googleapis.com/auth/drive'],
       });
 
       const drive = google.drive({ version: 'v3', auth });
-
-      // 5. Kullanıcının e-postasına VIEWER (reader) izni ekle
       await drive.permissions.create({
         fileId: fileId,
-        requestBody: {
-          role: 'reader', // 'reader' = Google Drive'da Viewer (Görüntüleyen)
-          type: 'user',
-          emailAddress: user.email,
-        },
-        sendNotificationEmail: false, // Kullanıcıya e-posta spam'i atmasın
+        requestBody: { role: 'reader', type: 'user', emailAddress: user.email },
+        sendNotificationEmail: false,
       });
+
+      // 5. Sisteme LOG Kaydı Atma (Admin paneline düşer)
+      await supabase.from('access_logs').insert([{
+        user_email: user.email,
+        match_title: match.title || 'Bilinmeyen İçerik',
+        action_detail: 'Drive İzleme Yetkisi Verildi (VIP)'
+      }]);
     }
 
     return Response.json({ drive_link: match.drive_link });
   } catch (err) {
-    console.error("Google Drive API Hatası:", err);
-    return Response.json({ error: "Erişim izni verilirken bir hata oluştu." }, { status: 500 });
+    console.error(err);
+    return Response.json({ error: "Sunucu tarafında bir hata oluştu." }, { status: 500 });
   }
 }
