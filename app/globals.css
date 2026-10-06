@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Scrollbar çıktığında sitenin titremesini/kaymasını engeller */
+html {
+  scrollbar-gutter: stable;
+  background-color: #050505;
+}
+
+/* Şık bir kaydırma çubuğu tasarımı */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #050505; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #7c3aed; } /* Mor vurgu */
