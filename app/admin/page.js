@@ -14,7 +14,7 @@ export default function AdminDashboard() {
   const [matches, setMatches] = useState([]);
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
-  const [newMatch, setNewMatch] = useState({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', file_size: '', resolution: '1080p', fps: '50fps' });
+  const [newMatch, setNewMatch] = useState({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', embed_code: '', file_size: '', resolution: '1080p', fps: '50fps' });
 
   useEffect(() => { checkAdminAccess(); }, []);
 
@@ -39,11 +39,10 @@ export default function AdminDashboard() {
   const handleAddMatch = async (e) => {
     e.preventDefault();
     await supabase.from('mac').insert([newMatch]);
-    setNewMatch({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', file_size: '', resolution: '1080p', fps: '50fps' });
+    setNewMatch({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', embed_code: '', file_size: '', resolution: '1080p', fps: '50fps' });
     fetchData();
   };
 
-  // YENİ EKLENEN SİLME FONKSİYONU
   const handleDeleteMatch = async (id) => {
     if (window.confirm('Bu içeriği silmek istediğinize emin misiniz?')) {
       await supabase.from('mac').delete().eq('id', id);
@@ -79,11 +78,12 @@ export default function AdminDashboard() {
         {activeTab === 'matches' && (
           <div className="space-y-8">
             <div className="p-6 rounded-2xl bg-neutral-950 border border-neutral-900">
-              <h2 className="text-xl font-semibold mb-6">Yeni İçerik Ekle</h2>
+              <h2 className="text-xl font-semibold mb-6 text-white">Yeni İçerik Ekle</h2>
               <form onSubmit={handleAddMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input required placeholder="Başlık" value={newMatch.title} onChange={e => setNewMatch({...newMatch, title: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <input required placeholder="Google Drive Linki" value={newMatch.drive_link} onChange={e => setNewMatch({...newMatch, drive_link: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <input placeholder="Fotoğraf URL (Imgur vb.)" value={newMatch.thumbnail_url} onChange={e => setNewMatch({...newMatch, thumbnail_url: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
+                <input required placeholder="Başlık (Örn: Osimhen vs Tunisia...)" value={newMatch.title} onChange={e => setNewMatch({...newMatch, title: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
+                <input required placeholder="Google Drive Indirme Linki" value={newMatch.drive_link} onChange={e => setNewMatch({...newMatch, drive_link: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
+                <input placeholder="Fotoğraf URL (Imgur direct link)" value={newMatch.thumbnail_url} onChange={e => setNewMatch({...newMatch, thumbnail_url: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
+                <input placeholder="Embed / Player Kodu (iframe url veya embed link)" value={newMatch.embed_code} onChange={e => setNewMatch({...newMatch, embed_code: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
                 <select value={newMatch.category} onChange={e => setNewMatch({...newMatch, category: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white">
                   <option value="exclusive">Barafella Exclusive (Comps)</option>
                   <option value="sub">Barafella Sub (Full Feed)</option>
@@ -93,7 +93,7 @@ export default function AdminDashboard() {
                   <input placeholder="Çözünürlük (1080p)" value={newMatch.resolution} onChange={e => setNewMatch({...newMatch, resolution: e.target.value})} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm outline-none text-white" />
                   <input placeholder="FPS (50fps)" value={newMatch.fps} onChange={e => setNewMatch({...newMatch, fps: e.target.value})} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm outline-none text-white" />
                 </div>
-                <button type="submit" className="bg-white text-black font-semibold rounded-xl px-4 py-3 hover:bg-neutral-200 transition-all">İçeriği Yayına Al</button>
+                <button type="submit" className="bg-white text-black font-semibold rounded-xl px-4 py-3 hover:bg-neutral-200 transition-all col-span-2">İçeriği Yayına Al</button>
               </form>
             </div>
 
@@ -107,7 +107,6 @@ export default function AdminDashboard() {
                       <p className="text-xs text-neutral-500 mt-1">{m.category.toUpperCase()} • {m.file_size}</p>
                     </div>
                   </div>
-                  {/* SİL BUTONU */}
                   <button onClick={() => handleDeleteMatch(m.id)} className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all text-xs font-semibold opacity-0 group-hover:opacity-100">
                     Sil
                   </button>
@@ -117,7 +116,6 @@ export default function AdminDashboard() {
           </div>
         )}
         
-        {/* Üyeler ve Loglar aynı */}
         {activeTab === 'users' && (
           <div className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4">
              {users.map(u => (
