@@ -2,19 +2,19 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+const TAG_OPTIONS = ['Satfeed', '4K&1080P HDTV', 'Web-Dl', 'Upscaled', 'Champions League & Other League', 'Turkey Super League', 'Premier League', 'Serie A', 'La Liga'];
 
 export default function AdminDashboard() {
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('matches');
   const [matches, setMatches] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const [newMatch, setNewMatch] = useState({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', embed_code: '', file_size: '', resolution: '1080p', fps: '50fps' });
+  
+  const [newMatch, setNewMatch] = useState({ 
+    title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', 
+    file_size: '', resolution: '1080p', fps: '50fps', badge: '', tags: [], match_info: '' 
+  });
 
   useEffect(() => { checkAdminAccess(); }, []);
 
@@ -23,120 +23,92 @@ export default function AdminDashboard() {
     if (!session) return window.location.href = '/';
     const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', session.user.id).single();
     if (profile?.is_admin) { setIsAdmin(true); fetchData(); } 
-    else { window.location.href = '/'; }
-    setLoading(false);
   };
 
   const fetchData = async () => {
-    const { data: mData } = await supabase.from('mac').select('*').order('created_at', { ascending: false });
-    if (mData) setMatches(mData);
-    const { data: uData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (uData) setUsers(uData);
-    const { data: lData } = await supabase.from('access_logs').select('*').order('created_at', { ascending: false });
-    if (lData) setLogs(lData);
+    const { data } = await supabase.from('mac').select('*').order('created_at', { ascending: false });
+    if (data) setMatches(data);
+  };
+
+  const toggleTag = (tag) => {
+    setNewMatch(prev => ({
+      ...prev,
+      tags: prev.tags.includes(tag) ? prev.tags.filter(t => t !== tag) : [...prev.tags, tag]
+    }));
   };
 
   const handleAddMatch = async (e) => {
     e.preventDefault();
-    await supabase.from('mac').insert([newMatch]);
-    setNewMatch({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', embed_code: '', file_size: '', resolution: '1080p', fps: '50fps' });
+    const matchData = { ...newMatch, tags: JSON.stringify(newMatch.tags) };
+    await supabase.from('mac').insert([matchData]);
+    setNewMatch({ title: '', drive_link: '', category: 'exclusive', thumbnail_url: '', file_size: '', resolution: '1080p', fps: '50fps', badge: '', tags: [], match_info: '' });
     fetchData();
   };
 
   const handleDeleteMatch = async (id) => {
-    if (window.confirm('Bu içeriği silmek istediğinize emin misiniz?')) {
-      await supabase.from('mac').delete().eq('id', id);
-      fetchData();
-    }
+    if (window.confirm('Emin misiniz?')) { await supabase.from('mac').delete().eq('id', id); fetchData(); }
   };
 
-  const toggleVipStatus = async (userId, currentStatus) => {
-    await supabase.from('profiles').update({ is_vip: !currentStatus }).eq('id', userId);
-    fetchData();
-  };
-
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-white">Doğrulanıyor...</div>;
-  if (!isAdmin) return null;
+  if (!isAdmin) return <div className="min-h-screen bg-black text-white p-10">Yükleniyor...</div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-[#f5f5f7] font-sans selection:bg-neutral-800">
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-black/50 border-b border-neutral-900 px-8 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-md bg-white flex items-center justify-center font-bold text-black">B</div>
-          <span className="font-semibold tracking-tight">Admin Portal</span>
-        </div>
-        <div className="flex gap-2 bg-neutral-900/50 p-1 rounded-lg border border-neutral-800">
-          {['matches', 'users', 'logs'].map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-all ${activeTab === tab ? 'bg-neutral-800 text-white' : 'text-neutral-500'}`}>
-              {tab === 'matches' ? 'İçerikler' : tab === 'users' ? 'Üyeler' : 'Loglar'}
-            </button>
-          ))}
-        </div>
+    <div className="min-h-screen bg-[#050505] text-[#f5f5f7] font-sans">
+      <header className="p-6 border-b border-white/10 flex justify-between bg-black/50 backdrop-blur-md">
+        <h1 className="font-bold text-xl text-purple-400">Barafella Admin</h1>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
-        {activeTab === 'matches' && (
-          <div className="space-y-8">
-            <div className="p-6 rounded-2xl bg-neutral-950 border border-neutral-900">
-              <h2 className="text-xl font-semibold mb-6 text-white">Yeni İçerik Ekle</h2>
-              <form onSubmit={handleAddMatch} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input required placeholder="Başlık (Örn: Osimhen vs Tunisia...)" value={newMatch.title} onChange={e => setNewMatch({...newMatch, title: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <input required placeholder="Google Drive Indirme Linki" value={newMatch.drive_link} onChange={e => setNewMatch({...newMatch, drive_link: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <input placeholder="Fotoğraf URL (Imgur direct link)" value={newMatch.thumbnail_url} onChange={e => setNewMatch({...newMatch, thumbnail_url: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <input placeholder="Embed / Player Kodu (iframe url veya embed link)" value={newMatch.embed_code} onChange={e => setNewMatch({...newMatch, embed_code: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white" />
-                <select value={newMatch.category} onChange={e => setNewMatch({...newMatch, category: e.target.value})} className="bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm focus:border-neutral-500 outline-none text-white">
-                  <option value="exclusive">Barafella Exclusive (Comps)</option>
-                  <option value="sub">Barafella Sub (Full Feed)</option>
-                </select>
-                <div className="flex gap-4">
-                  <input placeholder="Boyut (Örn: 2.4 GB)" value={newMatch.file_size} onChange={e => setNewMatch({...newMatch, file_size: e.target.value})} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm outline-none text-white" />
-                  <input placeholder="Çözünürlük (1080p)" value={newMatch.resolution} onChange={e => setNewMatch({...newMatch, resolution: e.target.value})} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm outline-none text-white" />
-                  <input placeholder="FPS (50fps)" value={newMatch.fps} onChange={e => setNewMatch({...newMatch, fps: e.target.value})} className="w-full bg-black border border-neutral-800 rounded-xl px-4 py-3 text-sm outline-none text-white" />
-                </div>
-                <button type="submit" className="bg-white text-black font-semibold rounded-xl px-4 py-3 hover:bg-neutral-200 transition-all col-span-2">İçeriği Yayına Al</button>
-              </form>
+        <div className="bg-neutral-900/50 p-6 rounded-2xl border border-white/5 mb-8">
+          <h2 className="text-xl font-bold mb-4">Yeni İçerik</h2>
+          <form onSubmit={handleAddMatch} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input required placeholder="Başlık" value={newMatch.title} onChange={e => setNewMatch({...newMatch, title: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              <input required placeholder="Drive Linki" value={newMatch.drive_link} onChange={e => setNewMatch({...newMatch, drive_link: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              <input placeholder="Fotoğraf URL" value={newMatch.thumbnail_url} onChange={e => setNewMatch({...newMatch, thumbnail_url: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              <input placeholder="Maç Bilgisi (Örn: Rams Park, 2-1)" value={newMatch.match_info} onChange={e => setNewMatch({...newMatch, match_info: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              
+              <select value={newMatch.category} onChange={e => setNewMatch({...newMatch, category: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white">
+                <option value="exclusive">Barafella Exclusive</option>
+                <option value="sub">Barafella Subscription (Sub)</option>
+              </select>
+              
+              <select value={newMatch.badge} onChange={e => setNewMatch({...newMatch, badge: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white">
+                <option value="">-- Rozet Yok --</option>
+                <option value="YENİ">YENİ</option>
+                <option value="🔥 POPÜLER">🔥 POPÜLER</option>
+                <option value="ÇOK İZLENDİ">ÇOK İZLENDİ</option>
+              </select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {matches.map(m => (
-                <div key={m.id} className="p-4 rounded-xl bg-neutral-950 border border-neutral-900 flex justify-between items-center group">
-                  <div className="flex gap-4 items-center">
-                    <img src={m.thumbnail_url || 'https://via.placeholder.com/150'} className="w-20 h-14 object-cover rounded-lg border border-neutral-800" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-white">{m.title}</h3>
-                      <p className="text-xs text-neutral-500 mt-1">{m.category.toUpperCase()} • {m.file_size}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => handleDeleteMatch(m.id)} className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all text-xs font-semibold opacity-0 group-hover:opacity-100">
-                    Sil
-                  </button>
-                </div>
-              ))}
+            <div className="grid grid-cols-3 gap-4">
+              <input placeholder="Boyut (2.4 GB)" value={newMatch.file_size} onChange={e => setNewMatch({...newMatch, file_size: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              <input placeholder="Çözünürlük (1080p)" value={newMatch.resolution} onChange={e => setNewMatch({...newMatch, resolution: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
+              <input placeholder="FPS (50fps)" value={newMatch.fps} onChange={e => setNewMatch({...newMatch, fps: e.target.value})} className="bg-black border border-white/10 p-3 rounded-lg text-white" />
             </div>
-          </div>
-        )}
-        
-        {activeTab === 'users' && (
-          <div className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4">
-             {users.map(u => (
-                <div key={u.id} className="flex justify-between items-center p-3 border-b border-neutral-900">
-                  <span className="text-sm text-white">{u.email}</span>
-                  <button onClick={() => toggleVipStatus(u.id, u.is_vip)} className={`px-4 py-1.5 rounded-lg text-xs font-medium ${u.is_vip ? 'bg-red-500/10 text-red-500' : 'bg-white text-black'}`}>
-                    {u.is_vip ? 'Yetkiyi Al' : 'VIP Yap'}
+
+            <div className="p-4 bg-black/40 rounded-lg border border-white/5">
+              <label className="block text-sm text-neutral-400 mb-2">Kategoriler (Çoklu Seçim)</label>
+              <div className="flex flex-wrap gap-2">
+                {TAG_OPTIONS.map(tag => (
+                  <button type="button" key={tag} onClick={() => toggleTag(tag)} className={`px-3 py-1 text-xs rounded-full border transition-colors ${newMatch.tags.includes(tag) ? 'bg-purple-600 border-purple-500 text-white' : 'bg-transparent border-white/20 text-neutral-400'}`}>
+                    {tag}
                   </button>
-                </div>
-             ))}
-          </div>
-        )}
-        {activeTab === 'logs' && (
-           <div className="bg-neutral-950 border border-neutral-900 rounded-2xl p-4 space-y-2">
-             {logs.map(l => (
-               <div key={l.id} className="text-xs text-neutral-400 p-2 border-b border-neutral-900">
-                 <span className="text-emerald-400">[{new Date(l.created_at).toLocaleString('tr-TR')}]</span> {l.user_email} yetki aldı: <span className="text-white">{l.match_title}</span>
-               </div>
-             ))}
-           </div>
-        )}
+                ))}
+              </div>
+            </div>
+
+            <button type="submit" className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold p-3 rounded-lg transition-colors">Yükle</button>
+          </form>
+        </div>
+
+        <div className="space-y-2">
+          {matches.map(m => (
+            <div key={m.id} className="flex justify-between items-center p-4 bg-neutral-900/40 border border-white/5 rounded-lg">
+              <div><span className="text-white font-bold">{m.title}</span> <span className="text-xs text-purple-400 ml-2">👁 {m.views || 0}</span></div>
+              <button onClick={() => handleDeleteMatch(m.id)} className="text-red-500 text-sm hover:underline">Sil</button>
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );
